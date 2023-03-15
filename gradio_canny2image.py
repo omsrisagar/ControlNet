@@ -1,3 +1,5 @@
+import os
+
 from share import *
 import config
 
@@ -14,7 +16,7 @@ from annotator.canny import CannyDetector
 from cldm.model import create_model, load_state_dict
 from cldm.ddim_hacked import DDIMSampler
 
-
+os.environ['CUDA_VISIBLE_DEVICES'] = '4'
 apply_canny = CannyDetector()
 
 model = create_model('./models/cldm_v15.yaml').cpu()
