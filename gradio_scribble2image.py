@@ -7,15 +7,26 @@ import gradio as gr
 import numpy as np
 import torch
 import random
+import os
 
 from pytorch_lightning import seed_everything
 from annotator.util import resize_image, HWC3
 from cldm.model import create_model, load_state_dict
 from cldm.ddim_hacked import DDIMSampler
+# from ldm.models.diffusion.ddim import DDIMSampler
 
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '4'
 
 model = create_model('./models/cldm_v15.yaml').cpu()
-model.load_state_dict(load_state_dict('./models/control_sd15_scribble.pth', location='cuda'))
+# model = create_model('./models/cldm_v21.yaml').cpu()
+model.load_state_dict(load_state_dict('./models/control_sd15_scribble.pth', location='cuda')) # 1427527504 params, 1484 keys in state_dict # need to use cldm_v15.yaml above
+# model.load_state_dict(load_state_dict('lightning_logs/train_SDv15/checkpoints/latest-300-step-checkpoint.ckpt', location='cuda')) # 1484 keys, 1427527504 params (same as above)
+# model.load_state_dict(load_state_dict('lightning_logs/train_SDv21/checkpoints/latest-300-step-checkpoint.ckpt', location='cuda')) # 1484 keys, 1427527504 params (same as above)
+
+# Load SD VAE for enhanced decoding
+model.first_stage_model.load_state_dict(load_state_dict('./models/vae-ft-ema-560000-ema-pruned.ckpt', location='cuda'), strict=False)
+
 model = model.cuda()
 ddim_sampler = DDIMSampler(model)
 
@@ -25,8 +36,12 @@ def process(input_image, prompt, a_prompt, n_prompt, num_samples, image_resoluti
         img = resize_image(HWC3(input_image), image_resolution)
         H, W, C = img.shape
 
+        # Enable for pretrained scribble2image (control_sd15_scribble.pth), disable for my models
         detected_map = np.zeros_like(img, dtype=np.uint8)
         detected_map[np.min(img, axis=2) < 127] = 255
+
+        # Enable for mine, disable for pretrained
+        # detected_map = img
 
         control = torch.from_numpy(detected_map.copy()).float().cuda() / 255.0
         control = torch.stack([control for _ in range(num_samples)], dim=0)
