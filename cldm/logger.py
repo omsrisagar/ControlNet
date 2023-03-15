@@ -27,17 +27,28 @@ class ImageLogger(Callback):
     @rank_zero_only
     def log_local(self, save_dir, split, images, global_step, current_epoch, batch_idx):
         root = os.path.join(save_dir, "image_log", split)
-        for k in images:
-            grid = torchvision.utils.make_grid(images[k], nrow=4)
-            if self.rescale:
-                grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
-            grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1)
-            grid = grid.numpy()
-            grid = (grid * 255).astype(np.uint8)
-            filename = "{}_gs-{:06}_e-{:06}_b-{:06}.png".format(k, global_step, current_epoch, batch_idx)
-            path = os.path.join(root, filename)
-            os.makedirs(os.path.split(path)[0], exist_ok=True)
-            Image.fromarray(grid).save(path)
+        images = torch.cat([images['samples_cfg_scale_9.00'], images['control'], images['reconstruction']], dim=0)
+        # for k in images:
+        #     grid = torchvision.utils.make_grid(images[k], nrow=4)
+        #     if self.rescale:
+        #         grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
+        #     grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1)
+        #     grid = grid.numpy()
+        #     grid = (grid * 255).astype(np.uint8)
+        #     filename = "{}_gs-{:06}_e-{:06}_b-{:06}.png".format(k, global_step, current_epoch, batch_idx)
+        #     path = os.path.join(root, filename)
+        #     os.makedirs(os.path.split(path)[0], exist_ok=True)
+        #     Image.fromarray(grid).save(path)
+        grid = torchvision.utils.make_grid(images, nrow=3) # nrow has to be batch size!
+        if self.rescale:
+            grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
+        grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1)
+        grid = grid.numpy()
+        grid = (grid * 255).astype(np.uint8)
+        filename = "gs-{:06}_e-{:06}_b-{:06}.png".format(global_step, current_epoch, batch_idx)
+        path = os.path.join(root, filename)
+        os.makedirs(os.path.split(path)[0], exist_ok=True)
+        Image.fromarray(grid).save(path)
 
     def log_img(self, pl_module, batch, batch_idx, split="train"):
         check_idx = batch_idx  # if self.log_on_batch_idx else pl_module.global_step
@@ -71,6 +82,44 @@ class ImageLogger(Callback):
     def check_frequency(self, check_idx):
         return check_idx % self.batch_freq == 0
 
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+    # def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
         if not self.disabled:
             self.log_img(pl_module, batch, batch_idx, split="train")
+
+class CheckpointEveryNSteps(Callback):
+    """
+    Save a checkpoint every N steps, instead of Lightning's default that checkpoints
+    based on validation loss.
+    """
+
+    def __init__(
+        self,
+        save_step_frequency,
+        prefix="N-Step-Checkpoint",
+        use_modelcheckpoint_filename=None,
+    ):
+        """
+        Args:
+            save_step_frequency: how often to save in steps
+            prefix: add a prefix to the name, only used if
+                use_modelcheckpoint_filename=False
+            use_modelcheckpoint_filename: just use the ModelCheckpoint callback's
+                default filename, don't use ours.
+        """
+        self.save_step_frequency = save_step_frequency
+        self.prefix = prefix
+        self.use_modelcheckpoint_filename = use_modelcheckpoint_filename
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        """ Check if we should save a checkpoint after every train batch """
+        epoch = trainer.current_epoch
+        global_step = trainer.global_step
+        if (global_step+1) % self.save_step_frequency == 0:
+            if self.use_modelcheckpoint_filename:
+                # filename = trainer.checkpoint_callback.filename # seem to be None by default
+                filename = self.use_modelcheckpoint_filename
+            else:
+                filename = f"{self.prefix}_{epoch=}_{global_step=}.ckpt"
+            ckpt_path = os.path.join(trainer.checkpoint_callback.dirpath, filename)
+            trainer.save_checkpoint(ckpt_path)

@@ -275,7 +275,7 @@ class ControlNet(nn.Module):
                 use_scale_shift_norm=use_scale_shift_norm,
             ),
         )
-        self.middle_block_out = self.make_zero_conv(ch)
+        self.middle_block_out = self.make_zero_conv(ch) # Note that there are output_blocks after middle block
         self._feature_size += ch
 
     def make_zero_conv(self, channels):
@@ -285,7 +285,7 @@ class ControlNet(nn.Module):
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
         emb = self.time_embed(t_emb)
 
-        guided_hint = self.input_hint_block(hint, emb, context)
+        guided_hint = self.input_hint_block(hint, emb, context) # emb, context are not used at all, so this is sketch encoding!
 
         outs = []
 
@@ -308,8 +308,8 @@ class ControlNet(nn.Module):
 class ControlLDM(LatentDiffusion):
 
     def __init__(self, control_stage_config, control_key, only_mid_control, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.control_model = instantiate_from_config(control_stage_config)
+        super().__init__(*args, **kwargs) # diffusion_model (created in this step) is the original U-net (SD model locked) with additional controlnet inputs
+        self.control_model = instantiate_from_config(control_stage_config) # control_model is trainable input & middle blocks of U-net passed through zero convs.
         self.control_key = control_key
         self.only_mid_control = only_mid_control
         self.control_scales = [1.0] * 13

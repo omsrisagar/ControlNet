@@ -84,7 +84,7 @@ def get_obj_from_str(string, reload=False):
     if reload:
         module_imp = importlib.import_module(module)
         importlib.reload(module_imp)
-    return getattr(importlib.import_module(module, package=None), cls)
+    return getattr(importlib.import_module(module, package=None), cls) # Equi of "from cldm.cldm import ControlNet; return ControlNet"
 
 
 class AdamWwithEMAandWings(optim.Optimizer):
